@@ -19,7 +19,7 @@ const testArbiterEndpoint = "tcp://127.0.0.1:4444"
 const testStoreEndpoint = "tcp://127.0.0.1:5555"
 
 //redirect address for spotify oauth
-const redirectURI = "http://127.0.0.1:8080/auth/callback"
+const redirectURI = "http://127.0.0.1:8080/callback"
 
 var (
 	auth  = spotify.NewAuthenticator(redirectURI, spotify.ScopeUserReadPrivate, spotify.ScopeUserReadRecentlyPlayed)
@@ -69,6 +69,7 @@ func startAuth(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "<h1>Authenticate</h1>")
 	fmt.Fprintf(w, "<title>Authentication Page</title>")
 	fmt.Fprintf(w, "<a href='%s'>Press to authenticate</a>", url)
+	fmt.Fprintf(w, "<script>window.parent.postMessage({ type:'databox_oauth_redirect', url: 'https://api.twitter.com/oauth/authenticate?oauth_token=' + token}, '*');</script>")
 }
 
 func setUpWebServer(testMode bool, r *mux.Router, port string) {
