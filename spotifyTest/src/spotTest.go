@@ -33,8 +33,8 @@ func main() {
 
 	router := mux.NewRouter()
 	router.HandleFunc("/status", statusEndpoint).Methods("GET")
-	router.HandleFunc("/auth/callback", completeAuth)
-	router.HandleFunc("/auth", startAuth)
+	router.HandleFunc("/callback", completeAuth)
+	router.HandleFunc("/", startAuth)
 	setUpWebServer(true, router, "8080")
 }
 

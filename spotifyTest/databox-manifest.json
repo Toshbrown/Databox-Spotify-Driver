@@ -1,18 +1,24 @@
 {
 	"manifest-version": 1,
 
-	"name": "spotify-playlist-driver",
+	"name": "spotify-history-driver",
 	"databox-type": "driver",
-	"version": "0.5.0",
+	"version": "latest",
 
-	"description": "A driver to gather information about your spotify playlists.",
+	"description": "A driver to gather information about your spotify play history.",
 	"author": "Edgar Bodiaj <Edgar.Bodiaj@nottingham.ac.uk>",
 	"license": "MIT",
 	"tags": [
 		"spotify",
+		"history",
 		"driver",
 		"databox"
 	],
+	"homepage": "https://github.com/EdgarBodiaj/spotTest",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/EdgarBodiaj/spotTest/"
+	},
 	"resource-requirements": {
 		"store": "core-store"
 	}

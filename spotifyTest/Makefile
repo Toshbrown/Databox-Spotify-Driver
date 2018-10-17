@@ -1,5 +1,5 @@
-IMAGE_NAME=go-test-driver
-DEFAULT_REG=toshbrown
+IMAGE_NAME=spotify-history-driver
+DEFAULT_REG=edgarbodiaj
 VERSION=latest
 
 .PHONY: all
