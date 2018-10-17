@@ -1,0 +1,20 @@
+{
+	"manifest-version": 1,
+
+	"name": "spotify-playlist-driver",
+	"databox-type": "driver",
+	"version": "0.5.0",
+
+	"description": "A driver to gather information about your spotify playlists.",
+	"author": "Edgar Bodiaj <Edgar.Bodiaj@nottingham.ac.uk>",
+	"license": "MIT",
+	"tags": [
+		"spotify",
+		"driver",
+		"databox"
+	],
+	"resource-requirements": {
+		"store": "core-store"
+	}
+
+}
