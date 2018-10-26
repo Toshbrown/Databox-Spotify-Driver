@@ -19,6 +19,14 @@
 		"type": "git",
 		"url": "git+https://github.com/EdgarBodiaj/spotTest/"
 	},
+	"external-whitelist": [
+		{
+			"urls": [
+				"https://accounts.spotify.com/api/token",
+				"https://accounts.spotify.com/authorize"
+			]
+		}
+	],
 	"resource-requirements": {
 		"store": "core-store"
 	}

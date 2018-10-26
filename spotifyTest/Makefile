@@ -1,5 +1,5 @@
 IMAGE_NAME=spotify-history-driver
-DEFAULT_REG=edgarbodiaj
+DEFAULT_REG=databoxsystems
 VERSION=latest
 
 .PHONY: all

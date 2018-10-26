@@ -19,7 +19,11 @@ const testArbiterEndpoint = "tcp://127.0.0.1:4444"
 const testStoreEndpoint = "tcp://127.0.0.1:5555"
 
 //redirect address for spotify oauth
-const redirectURI = "http://127.0.0.1:8080/callback"
+//const redirectURI = "http://127.0.0.1:8080/ui/callback"
+
+const redirectURI = "https://127.0.0.1/spotify-history-driver/ui/callback"
+
+//const redirectURI = "https://127.0.0.1/core-ui/ui/view/spotify-history-driver/callback"
 
 var (
 	auth  = spotify.NewAuthenticator(redirectURI, spotify.ScopeUserReadPrivate, spotify.ScopeUserReadRecentlyPlayed)
@@ -29,13 +33,15 @@ var (
 func main() {
 	//Set client_id and client_secret for the application inside the auth object
 	auth.SetAuthInfo("2706f5aa27b646d8835a6a8aca7eba37", "eb8aec62450e4d44a4308f07b82338cb")
+	DataboxTestMode := os.Getenv("DATABOX_VERSION") == ""
 	libDatabox.Info("Starting ....")
 
 	router := mux.NewRouter()
 	router.HandleFunc("/status", statusEndpoint).Methods("GET")
-	router.HandleFunc("/callback", completeAuth)
-	router.HandleFunc("/", startAuth)
-	setUpWebServer(true, router, "8080")
+	router.HandleFunc("/ui/callback", completeAuth)
+	router.HandleFunc("/ui/auth", authHandle)
+	router.HandleFunc("/ui", startAuth)
+	setUpWebServer(DataboxTestMode, router, "8080")
 }
 
 func statusEndpoint(w http.ResponseWriter, r *http.Request) {
@@ -44,14 +50,20 @@ func statusEndpoint(w http.ResponseWriter, r *http.Request) {
 }
 
 func completeAuth(w http.ResponseWriter, r *http.Request) {
+	//https://127.0.0.1/spotify-history-driver/ui/callback?code=AQC_W3kGk56PiIDLpcKz4zOTMTe8NAzvmAI3BBpabx8r8jLAxqbpxI_D46s2rA_-AtG0DIXWhvC191kdbdAbKsdEavXAnoFlvbQp5VhBfSNzZO8Z3ThdPZqvXvzkLKMMHg-Y2Hzq0iOuB7TdaBarH71p2k5o8agdNdaUb5pjKsn_7dcQlF3MaXQH9phFU4wVIQ7Qyo_QcM7IFcUimx7CL9JIS5xnIF6O5nEylboXxeBq3ugabygajvsUZakrl6Urv_MuiroG5iYEkWbRIBQv9Io53tlyOUwNL3E&state=abc123
+
+	libDatabox.Info(r.URL.RawQuery)
+	libDatabox.Info("Callback handle")
 	tok, err := auth.Token(state, r)
 	if err != nil {
 		http.Error(w, "Could not get token", http.StatusForbidden)
-		log.Fatal(err)
+		fmt.Println("Error ", err)
+		return
 	}
 	if st := r.FormValue("state"); st != state {
 		http.NotFound(w, r)
-		log.Fatalf("State mismatch: %s != %s\n", st, state)
+		fmt.Println("State mismatch: %s != %s \n", st, state)
+		return
 	}
 
 	fmt.Fprintf(w, "<h1>Authenticated</h1>")
@@ -61,15 +73,27 @@ func completeAuth(w http.ResponseWriter, r *http.Request) {
 	go startDriverWork(client)
 
 }
+func authHandle(w http.ResponseWriter, r *http.Request) {
+	url := auth.AuthURL(state)
+	libDatabox.Info("Auth handle")
+	fmt.Fprintf(w, "<script>window.parent.postMessage({ type:'databox_oauth_redirect', url: '%s'}, '*');</script>", url)
+}
 
 func startAuth(w http.ResponseWriter, r *http.Request) {
-	url := auth.AuthURL(state)
 	//Display authentication page
-	//This allows the user to sign into their spotify account so that their playlist data can be obtained
+
 	fmt.Fprintf(w, "<h1>Authenticate</h1>")
 	fmt.Fprintf(w, "<title>Authentication Page</title>")
-	fmt.Fprintf(w, "<a href='%s'>Press to authenticate</a>", url)
-	fmt.Fprintf(w, "<script>window.parent.postMessage({ type:'databox_oauth_redirect', url: 'https://api.twitter.com/oauth/authenticate?oauth_token=' + token}, '*');</script>")
+
+	DataboxTestMode := os.Getenv("DATABOX_VERSION") == ""
+
+	if DataboxTestMode {
+		url := auth.AuthURL(state)
+		fmt.Fprintf(w, "<a href='%s'>Press to authenticate</a>", url)
+	} else {
+		fmt.Fprintf(w, "<a href='./ui/auth'>Press to authenticate</a>")
+	}
+
 }
 
 func setUpWebServer(testMode bool, r *mux.Router, port string) {
@@ -95,7 +119,6 @@ func setUpWebServer(testMode bool, r *mux.Router, port string) {
 				tls.CurveP256,
 			},
 		}
-
 		srv.TLSConfig = tlsConfig
 
 		libDatabox.Info("Waiting for https requests on port " + srv.Addr)
@@ -119,7 +142,7 @@ func startDriverWork(client spotify.Client) {
 		//turn on debug output for the databox library
 		libDatabox.OutputDebug(true)
 	} else {
-		DataboxStoreEndpoint = os.Getenv("DATABOX_STORE_ENDPOINT")
+		DataboxStoreEndpoint = os.Getenv("DATABOX_ZMQ_ENDPOINT")
 		storeClient = libDatabox.NewDefaultCoreStoreClient(DataboxStoreEndpoint)
 	}
 
