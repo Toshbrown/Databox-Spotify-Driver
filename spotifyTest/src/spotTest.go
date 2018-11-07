@@ -7,6 +7,8 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"sort"
+	"strconv"
 	"time"
 
 	"github.com/gorilla/mux"
@@ -26,9 +28,32 @@ const redirectURI = "https://127.0.0.1/spotify-history-driver/ui/callback"
 //const redirectURI = "https://127.0.0.1/core-ui/ui/view/spotify-history-driver/callback"
 
 var (
-	auth  = spotify.NewAuthenticator(redirectURI, spotify.ScopeUserReadPrivate, spotify.ScopeUserReadRecentlyPlayed)
-	state = "abc123"
+	auth = spotify.NewAuthenticator(redirectURI,
+		spotify.ScopeUserReadPrivate,
+		spotify.ScopeUserReadRecentlyPlayed,
+		spotify.ScopeUserTopRead)
+	state       = "abc123"
+	storeClient *libDatabox.CoreStoreClient
 )
+
+//ArtistArray is an array of artists
+type ArtistArray struct {
+	Items []Artist
+}
+
+//Artist struct contains information based on the artists
+type Artist struct {
+	Name       string   `json:"name"`
+	Genre      []string `json:"genres"`
+	Popularity int      `json:"popularity"`
+	ID         string   `json:"id"`
+}
+
+//Genres contains list of all genres and their occurunces
+type Genres struct {
+	Name  string
+	Count int
+}
 
 func main() {
 	//Set client_id and client_secret for the application inside the auth object
@@ -36,6 +61,7 @@ func main() {
 	DataboxTestMode := os.Getenv("DATABOX_VERSION") == ""
 	libDatabox.Info("Starting ....")
 
+	registerData(DataboxTestMode)
 	router := mux.NewRouter()
 	router.HandleFunc("/status", statusEndpoint).Methods("GET")
 	router.HandleFunc("/ui/callback", completeAuth)
@@ -49,10 +75,75 @@ func statusEndpoint(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("active\n"))
 }
 
-func completeAuth(w http.ResponseWriter, r *http.Request) {
-	//https://127.0.0.1/spotify-history-driver/ui/callback?code=AQC_W3kGk56PiIDLpcKz4zOTMTe8NAzvmAI3BBpabx8r8jLAxqbpxI_D46s2rA_-AtG0DIXWhvC191kdbdAbKsdEavXAnoFlvbQp5VhBfSNzZO8Z3ThdPZqvXvzkLKMMHg-Y2Hzq0iOuB7TdaBarH71p2k5o8agdNdaUb5pjKsn_7dcQlF3MaXQH9phFU4wVIQ7Qyo_QcM7IFcUimx7CL9JIS5xnIF6O5nEylboXxeBq3ugabygajvsUZakrl6Urv_MuiroG5iYEkWbRIBQv9Io53tlyOUwNL3E&state=abc123
+func registerData(testmode bool) {
+	var DataboxStoreEndpoint string
+	if testmode {
+		DataboxStoreEndpoint = testStoreEndpoint
+		ac, _ := libDatabox.NewArbiterClient("./", "./", testArbiterEndpoint)
+		storeClient = libDatabox.NewCoreStoreClient(ac, "./", DataboxStoreEndpoint, false)
+		//turn on debug output for the databox library
+		libDatabox.OutputDebug(true)
+	} else {
+		DataboxStoreEndpoint = os.Getenv("DATABOX_ZMQ_ENDPOINT")
+		storeClient = libDatabox.NewDefaultCoreStoreClient(DataboxStoreEndpoint)
+	}
 
-	libDatabox.Info(r.URL.RawQuery)
+	libDatabox.Info("starting driver work")
+
+	trackDatasource := libDatabox.DataSourceMetadata{
+		Description:    "Spotify Playlist Data",    //required
+		ContentType:    libDatabox.ContentTypeJSON, //required
+		Vendor:         "databox-test",             //required
+		DataSourceType: "playlistData",             //required
+		DataSourceID:   "SpotifyTrackData",         //required
+		StoreType:      libDatabox.StoreTypeTSBlob, //required
+		IsActuator:     false,
+		IsFunc:         false,
+	}
+	tErr := storeClient.RegisterDatasource(trackDatasource)
+	if tErr != nil {
+		libDatabox.Err("Error Registering Datasource " + tErr.Error())
+		return
+	}
+	libDatabox.Info("Registered Track Datasource")
+
+	artistDatasource := libDatabox.DataSourceMetadata{
+		Description:    "Spotify Top 20 user artists", //required
+		ContentType:    libDatabox.ContentTypeJSON,    //required
+		Vendor:         "databox-test",                //required
+		DataSourceType: "topArtists",                  //required
+		DataSourceID:   "SpotifyTopArtists",           //required
+		StoreType:      libDatabox.StoreTypeKV,        //required
+		IsActuator:     false,
+		IsFunc:         false,
+	}
+	aErr := storeClient.RegisterDatasource(artistDatasource)
+	if aErr != nil {
+		libDatabox.Err("Error Registering Credential Datasource " + aErr.Error())
+		return
+	}
+	libDatabox.Info("Registered Top Artist Datasource")
+
+	genreDatasource := libDatabox.DataSourceMetadata{
+		Description:    "Spotify top user genres",  //required
+		ContentType:    libDatabox.ContentTypeTEXT, //required
+		Vendor:         "databox-test",             //required
+		DataSourceType: "topGenres",                //required
+		DataSourceID:   "SpotifyTopGenres",         //required
+		StoreType:      libDatabox.StoreTypeKV,     //required
+		IsActuator:     false,
+		IsFunc:         false,
+	}
+	gErr := storeClient.RegisterDatasource(genreDatasource)
+	if gErr != nil {
+		libDatabox.Err("Error Registering Credential Datasource " + gErr.Error())
+		return
+	}
+	libDatabox.Info("Registered Credential Datasource")
+
+}
+
+func completeAuth(w http.ResponseWriter, r *http.Request) {
 	libDatabox.Info("Callback handle")
 	tok, err := auth.Token(state, r)
 	if err != nil {
@@ -62,7 +153,7 @@ func completeAuth(w http.ResponseWriter, r *http.Request) {
 	}
 	if st := r.FormValue("state"); st != state {
 		http.NotFound(w, r)
-		fmt.Println("State mismatch: %s != %s \n", st, state)
+		fmt.Println("State mismatch: " + st + " != " + state + " \n")
 		return
 	}
 
@@ -70,8 +161,11 @@ func completeAuth(w http.ResponseWriter, r *http.Request) {
 
 	client := auth.NewClient(tok)
 
-	go startDriverWork(client)
+	channel := make(chan []string)
 
+	go driverWorkTrack(client)
+	go driverWorkArtist(client, channel)
+	go driverWorkGenre(client, channel)
 }
 func authHandle(w http.ResponseWriter, r *http.Request) {
 	url := auth.AuthURL(state)
@@ -126,47 +220,7 @@ func setUpWebServer(testMode bool, r *mux.Router, port string) {
 	}
 }
 
-func startDriverWork(client spotify.Client) {
-	DataboxTestMode := os.Getenv("DATABOX_VERSION") == ""
-
-	// Read in the store endpoint provided by databox
-	// this is a driver so you will get a core-store
-	// and you are responsible for registering datasources
-	// and writing in data.
-	var DataboxStoreEndpoint string
-	var storeClient *libDatabox.CoreStoreClient
-	if DataboxTestMode {
-		DataboxStoreEndpoint = testStoreEndpoint
-		ac, _ := libDatabox.NewArbiterClient("./", "./", testArbiterEndpoint)
-		storeClient = libDatabox.NewCoreStoreClient(ac, "./", DataboxStoreEndpoint, false)
-		//turn on debug output for the databox library
-		libDatabox.OutputDebug(true)
-	} else {
-		DataboxStoreEndpoint = os.Getenv("DATABOX_ZMQ_ENDPOINT")
-		storeClient = libDatabox.NewDefaultCoreStoreClient(DataboxStoreEndpoint)
-	}
-
-	libDatabox.Info("starting driver work")
-
-	//register our datasources
-	//we only need to do this once at start up
-	testDatasource := libDatabox.DataSourceMetadata{
-		Description:    "Spotify Playlist Data",    //required
-		ContentType:    libDatabox.ContentTypeJSON, //required
-		Vendor:         "databox-test",             //required
-		DataSourceType: "playlistData",             //required
-		DataSourceID:   "SpotifyData",              //required
-		StoreType:      libDatabox.StoreTypeTSBlob, //required
-		IsActuator:     false,
-		IsFunc:         false,
-	}
-	arr := storeClient.RegisterDatasource(testDatasource)
-	if arr != nil {
-		libDatabox.Err("Error Registering Datasource " + arr.Error())
-		return
-	}
-	libDatabox.Info("Registered Datasource")
-
+func driverWorkTrack(client spotify.Client) {
 	var recentTime int64
 	var opts spotify.RecentlyPlayedOptions
 
@@ -182,21 +236,22 @@ func startDriverWork(client spotify.Client) {
 		if len(results) > 0 {
 			//Get most recent items time and convernt to milliseconds
 			recentTime = results[0].PlayedAt.Unix() * 1000
-			fmt.Println(recentTime)
 			opts.AfterEpochMs = recentTime + 500
 
-			libDatabox.Info("Converting data")
+			libDatabox.Info("Converting data tracks")
 			for i := len(results) - 1; i > -1; i-- {
 				b, err := json.Marshal(results[i])
 				if err != nil {
 					fmt.Println("Error ", err)
 					return
 				}
-				aerr := storeClient.TSBlobJSON.WriteAt(testDatasource.DataSourceID, results[i].PlayedAt.Unix()*1000, b)
+				aerr := storeClient.TSBlobJSON.WriteAt("SpotifyTrackData",
+					results[i].PlayedAt.Unix()*1000,
+					b)
 				if aerr != nil {
 					libDatabox.Err("Error Write Datasource " + aerr.Error())
 				}
-				libDatabox.Info("Data written to store: " + string(b))
+				//libDatabox.Info("Data written to store: " + string(b))
 
 			}
 			libDatabox.Info("Storing data")
@@ -204,7 +259,98 @@ func startDriverWork(client spotify.Client) {
 			libDatabox.Info("No new data")
 		}
 		//time.Sleep(time.Hour * 2)
-		fmt.Println(len(results))
-		time.Sleep(time.Second * 10)
+		time.Sleep(time.Second * 30)
+	}
+}
+
+func driverWorkArtist(client spotify.Client, data chan<- []string) {
+	var artists ArtistArray
+	for {
+
+		results, err := client.CurrentUsersTopArtists()
+		if err != nil {
+			fmt.Println("Error ", err)
+			return
+		}
+		if results != nil {
+			libDatabox.Info("Converting data artists")
+
+			b, bErr := json.Marshal(results)
+			if bErr != nil {
+				fmt.Println("Error ", bErr)
+				return
+			}
+
+			mErr := json.Unmarshal(b, &artists)
+			if mErr != nil {
+				fmt.Println("Error ", mErr)
+				return
+			}
+
+			for i := 0; i < len(artists.Items); i++ {
+				data <- artists.Items[i].Genre
+
+				clean, cErr := json.Marshal(artists.Items[i])
+				if cErr != nil {
+					fmt.Println("Error ", cErr)
+					return
+				}
+				key := "Pos" + strconv.Itoa(i)
+				err := storeClient.KVText.Write("SpotifyTopArtists", key, clean)
+				if err != nil {
+					libDatabox.Err("Error Write Datasource " + err.Error())
+				}
+			}
+			data <- []string{"end"}
+
+		}
+		//time.Sleep(time.Hour * 24)
+		time.Sleep(time.Second * 30)
+	}
+}
+
+func driverWorkGenre(client spotify.Client, data <-chan []string) {
+	var stop bool
+	genres := make([]Genres, 0)
+	for {
+		for {
+			info := <-data
+			if info[0] == "end" {
+				break
+			}
+
+			for i := 0; i < len(info); i++ {
+				stop = false
+				for j := 0; j < len(genres); j++ {
+
+					if info[i] == genres[j].Name {
+						genres[j].Count++
+						stop = true
+					}
+				}
+				if !stop {
+					var temp Genres
+					temp.Name = info[i]
+					temp.Count++
+
+					genres = append(genres, temp)
+				}
+			}
+
+		}
+		//Sort genres from most popular to least, based on count
+		sort.Slice(genres, func(i, j int) bool {
+			return genres[i].Count > genres[j].Count
+		})
+		//Store genre name in store based on popularity
+		for k := 0; k < len(genres); k++ {
+			key := "Pos" + strconv.Itoa(k)
+			err := storeClient.KVText.Write("SpotifyTopGenres", key, []byte(genres[k].Name))
+			if err != nil {
+				libDatabox.Err("Error Write Datasource " + err.Error())
+			}
+		}
+		//time.Sleep(time.Hour * 24)
+		time.Sleep(time.Second * 30)
 	}
 }

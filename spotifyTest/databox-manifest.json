@@ -23,7 +23,8 @@
 		{
 			"urls": [
 				"https://accounts.spotify.com/api/token",
-				"https://accounts.spotify.com/authorize"
+				"https://accounts.spotify.com/authorize",
+				"https://api.spotify.com"
 			]
 		}
 	],
