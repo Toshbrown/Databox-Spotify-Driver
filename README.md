@@ -1,13 +1,21 @@
-# spotTest
+# Databox Spotify Driver
 ## Data format
 Data for the Spotify driver is gather using the Spotify API. 
 A [Golang wrapper for the Spotify API](https://github.com/zmb3/spotify) is used in in order to access the API calls.
 
 The driver uses Oauth authentication in order to sign users in and allow the driver access to the data.
+The Oauth is accessed using a link provided on the drivers UI, which when the user clicks will redirect them to the Spotify authentication page. Then on a success it will redirect back to the UI of the driver.
 
 All data is updated currently every 30 seconds (testing purposes). 
 The Spotify API retrives a maximum of 50 entires every call, due to limitations on the API. 
 
+## Data stores
+There are three seperate data stores associated with the driver. 
+
+### Track data store
+When tracks are downloaded using the Spotify API call, they are stored in a time series blob store **(TSBlob)**, with the time value being to set to when the track was listened too by the user.
+The content type that is being store is JSON **(ContentTypeJSON)**
+The datastore ID is: ***"SpotifyTrackData"***
 ### Track data example
 ```
 {"track":
@@ -35,6 +43,10 @@ The Spotify API retrives a maximum of 50 entires every call, due to limitations 
 }
 
 ```
+### Artist data store
+When the top artists are downloaded by using the Spotify API, they are stored in key-value pairs **(KVStore)**, with the key being their position in the returned object.
+The content type that is stored is JSON **(ContentTypeJSON)**
+The datastore ID is: ***"SpotifyTopArtists"***
 ### Artist data example
 ```
 {"name":"Fall Out Boy",
@@ -43,6 +55,12 @@ The Spotify API retrives a maximum of 50 entires every call, due to limitations 
 "id":"4UXqAaa6dQYAk18Lv7PEgX"}
 
 ```
+### Genre data store
+The top genres are calculated from the top artists, as the Spotify API does not have a specific call to retrive the users top genres.
+This is done by taking each artists list of genres and ordering them from most common to least common based on how many times they occur in the top artists.
+The genres are then store in kev-value pairs **(KVStore)**, with the key being the genres position.
+The content type that is store is Text **(ContentTypeText)**
+The datastore ID is: ***"SpotifyTopGenres"***
 ### Genre data example
 ```
 modern rock
