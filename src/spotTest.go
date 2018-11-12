@@ -23,7 +23,7 @@ const testStoreEndpoint = "tcp://127.0.0.1:5555"
 //redirect address for spotify oauth
 //const redirectURI = "http://127.0.0.1:8080/ui/callback"
 
-const redirectURI = "https://127.0.0.1/spotify-history-driver/ui/callback"
+const redirectURI = "https://127.0.0.1/core-ui/ui/view/spotify-history-driver/callback"
 
 //const redirectURI = "https://127.0.0.1/core-ui/ui/view/spotify-history-driver/callback"
 
@@ -123,23 +123,6 @@ func registerData(testmode bool) {
 		return
 	}
 	libDatabox.Info("Registered Top Artist Datasource")
-
-	genreDatasource := libDatabox.DataSourceMetadata{
-		Description:    "Spotify top user genres",  //required
-		ContentType:    libDatabox.ContentTypeTEXT, //required
-		Vendor:         "databox-test",             //required
-		DataSourceType: "topGenres",                //required
-		DataSourceID:   "SpotifyTopGenres",         //required
-		StoreType:      libDatabox.StoreTypeKV,     //required
-		IsActuator:     false,
-		IsFunc:         false,
-	}
-	gErr := storeClient.RegisterDatasource(genreDatasource)
-	if gErr != nil {
-		libDatabox.Err("Error Registering Credential Datasource " + gErr.Error())
-		return
-	}
-	libDatabox.Info("Registered Credential Datasource")
 
 }
 
