@@ -14,26 +14,24 @@ import (
 	"github.com/gorilla/mux"
 	libDatabox "github.com/me-box/lib-go-databox"
 	"github.com/zmb3/spotify"
+	"golang.org/x/oauth2"
 )
 
-//default addresses to be used in testing mode
-const testArbiterEndpoint = "tcp://127.0.0.1:4444"
-const testStoreEndpoint = "tcp://127.0.0.1:5555"
-
-//redirect address for spotify oauth
-//const redirectURI = "http://127.0.0.1:8080/ui/callback"
-
-const redirectURI = "https://127.0.0.1/core-ui/ui/view/spotify-history-driver/callback"
-
-//const redirectURI = "https://127.0.0.1/core-ui/ui/view/spotify-history-driver/callback"
+const (
+	RedirectHostInsideDatabox      = "https://spotify-history-driver:8080"
+	RedirectHostOutsideDatabox     = "http://127.0.0.1:8080"
+	OAuthRedirectURIInsideDatabox  = "https://127.0.0.1/core-ui/ui/view/spotify-history-driver/callback"
+	OAuthRedirectURIOutsideDatabox = "https://127.0.0.1/ui/spotify-history-driver/callback"
+	testArbiterEndpoint            = "tcp://127.0.0.1:4444"
+	testStoreEndpoint              = "tcp://127.0.0.1:5555"
+)
 
 var (
-	auth = spotify.NewAuthenticator(redirectURI,
-		spotify.ScopeUserReadPrivate,
-		spotify.ScopeUserReadRecentlyPlayed,
-		spotify.ScopeUserTopRead)
-	state       = "abc123"
-	storeClient *libDatabox.CoreStoreClient
+	auth            spotify.Authenticator
+	state           = "abc123"
+	storeClient     *libDatabox.CoreStoreClient
+	DataboxTestMode = os.Getenv("DATABOX_VERSION") == ""
+	stopChan        chan int
 )
 
 //ArtistArray is an array of artists
@@ -49,35 +47,18 @@ type Artist struct {
 	ID         string   `json:"id"`
 }
 
-//Genres contains list of all genres and their occurunces
+//Genres contains list of all genres and their occurrences
 type Genres struct {
 	Name  string
 	Count int
 }
 
 func main() {
-	//Set client_id and client_secret for the application inside the auth object
-	auth.SetAuthInfo("2706f5aa27b646d8835a6a8aca7eba37", "eb8aec62450e4d44a4308f07b82338cb")
-	DataboxTestMode := os.Getenv("DATABOX_VERSION") == ""
 	libDatabox.Info("Starting ....")
 
-	registerData(DataboxTestMode)
-	router := mux.NewRouter()
-	router.HandleFunc("/status", statusEndpoint).Methods("GET")
-	router.HandleFunc("/ui/callback", completeAuth)
-	router.HandleFunc("/ui/auth", authHandle)
-	router.HandleFunc("/ui", startAuth)
-	setUpWebServer(DataboxTestMode, router, "8080")
-}
-
-func statusEndpoint(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("active\n"))
-}
-
-func registerData(testmode bool) {
+	//set up storeClient
 	var DataboxStoreEndpoint string
-	if testmode {
+	if DataboxTestMode {
 		DataboxStoreEndpoint = testStoreEndpoint
 		ac, _ := libDatabox.NewArbiterClient("./", "./", testArbiterEndpoint)
 		storeClient = libDatabox.NewCoreStoreClient(ac, "./", DataboxStoreEndpoint, false)
@@ -87,6 +68,56 @@ func registerData(testmode bool) {
 		DataboxStoreEndpoint = os.Getenv("DATABOX_ZMQ_ENDPOINT")
 		storeClient = libDatabox.NewDefaultCoreStoreClient(DataboxStoreEndpoint)
 	}
+
+	registerDatasources()
+
+	router := mux.NewRouter()
+	router.HandleFunc("/status", statusEndpoint).Methods("GET")
+	router.HandleFunc("/ui/callback", completeAuth)
+	router.HandleFunc("/ui/auth", authHandle)
+	router.HandleFunc("/ui/logout", logOut)
+	router.HandleFunc("/ui/info", info)
+	router.HandleFunc("/ui", startAuth)
+
+	//Do we have an auth token?
+	accToken, err := storeClient.KVText.Read("auth", "AccessToken")
+	libDatabox.ChkErr(err)
+	if len(accToken) > 0 {
+		libDatabox.Info("Token found in DB starting driverWorkTrack")
+		go func() {
+			time.Sleep(time.Second * 10) //give DB some time to set permissions
+			var tok *oauth2.Token
+			json.Unmarshal(accToken, &tok)
+			client := auth.NewClient(tok)
+			channel := make(chan []string)
+			stopChan = make(chan int)
+			go driverWorkTrack(client, stopChan)
+			go driverWorkArtist(client, channel, stopChan)
+			go driverWorkGenre(client, channel, stopChan)
+		}()
+	}
+
+	//Set client_id and client_secret for the application inside the auth object
+	redirectURI := OAuthRedirectURIInsideDatabox
+	if DataboxTestMode {
+		redirectURI = OAuthRedirectURIOutsideDatabox
+	}
+
+	auth = spotify.NewAuthenticator(redirectURI,
+		spotify.ScopeUserReadPrivate,
+		spotify.ScopeUserReadRecentlyPlayed,
+		spotify.ScopeUserTopRead)
+	auth.SetAuthInfo("2706f5aa27b646d8835a6a8aca7eba37", "eb8aec62450e4d44a4308f07b82338cb")
+
+	setUpWebServer(DataboxTestMode, router, "8080")
+}
+
+func statusEndpoint(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("active\n"))
+}
+
+func registerDatasources() {
 
 	libDatabox.Info("starting driver work")
 
@@ -126,84 +157,7 @@ func registerData(testmode bool) {
 
 }
 
-func completeAuth(w http.ResponseWriter, r *http.Request) {
-	libDatabox.Info("Callback handle")
-	tok, err := auth.Token(state, r)
-	if err != nil {
-		http.Error(w, "Could not get token", http.StatusForbidden)
-		fmt.Println("Error ", err)
-		return
-	}
-	if st := r.FormValue("state"); st != state {
-		http.NotFound(w, r)
-		fmt.Println("State mismatch: " + st + " != " + state + " \n")
-		return
-	}
-
-	fmt.Fprintf(w, "<h1>Authenticated</h1>")
-
-	client := auth.NewClient(tok)
-
-	channel := make(chan []string)
-
-	go driverWorkTrack(client)
-	go driverWorkArtist(client, channel)
-	go driverWorkGenre(client, channel)
-}
-func authHandle(w http.ResponseWriter, r *http.Request) {
-	url := auth.AuthURL(state)
-	libDatabox.Info("Auth handle")
-	fmt.Fprintf(w, "<script>window.parent.postMessage({ type:'databox_oauth_redirect', url: '%s'}, '*');</script>", url)
-}
-
-func startAuth(w http.ResponseWriter, r *http.Request) {
-	//Display authentication page
-
-	fmt.Fprintf(w, "<h1>Authenticate</h1>")
-	fmt.Fprintf(w, "<title>Authentication Page</title>")
-
-	DataboxTestMode := os.Getenv("DATABOX_VERSION") == ""
-
-	if DataboxTestMode {
-		url := auth.AuthURL(state)
-		fmt.Fprintf(w, "<a href='%s'>Press to authenticate</a>", url)
-	} else {
-		fmt.Fprintf(w, "<a href='./ui/auth'>Press to authenticate</a>")
-	}
-
-}
-
-func setUpWebServer(testMode bool, r *mux.Router, port string) {
-
-	//Start up a well behaved HTTP/S server for displying the UI
-
-	srv := &http.Server{
-		Addr:         ":" + port,
-		ReadTimeout:  30 * time.Second,
-		WriteTimeout: 30 * time.Second,
-		IdleTimeout:  30 * time.Second,
-		Handler:      r,
-	}
-	if testMode {
-		//set up an http server for testing
-		libDatabox.Info("Waiting for http requests on port http://127.0.0.1" + srv.Addr)
-		log.Fatal(srv.ListenAndServe())
-	} else {
-		//configure tls
-		tlsConfig := &tls.Config{
-			PreferServerCipherSuites: true,
-			CurvePreferences: []tls.CurveID{
-				tls.CurveP256,
-			},
-		}
-		srv.TLSConfig = tlsConfig
-
-		libDatabox.Info("Waiting for https requests on port " + srv.Addr)
-		log.Fatal(srv.ListenAndServeTLS(libDatabox.GetHttpsCredentials(), libDatabox.GetHttpsCredentials()))
-	}
-}
-
-func driverWorkTrack(client spotify.Client) {
+func driverWorkTrack(client spotify.Client, stop chan int) {
 	var recentTime int64
 	var opts spotify.RecentlyPlayedOptions
 
@@ -217,7 +171,7 @@ func driverWorkTrack(client spotify.Client) {
 			return
 		}
 		if len(results) > 0 {
-			//Get most recent items time and convernt to milliseconds
+			//Get most recent items time and convert to milliseconds
 			recentTime = results[0].PlayedAt.Unix() * 1000
 			opts.AfterEpochMs = recentTime + 500
 
@@ -234,8 +188,6 @@ func driverWorkTrack(client spotify.Client) {
 				if aerr != nil {
 					libDatabox.Err("Error Write Datasource " + aerr.Error())
 				}
-				//libDatabox.Info("Data written to store: " + string(b))
-
 			}
 			libDatabox.Info("Storing data")
 		} else {
@@ -243,10 +195,18 @@ func driverWorkTrack(client spotify.Client) {
 		}
 		//time.Sleep(time.Hour * 2)
 		time.Sleep(time.Second * 30)
+
+		//Should we stop?
+		select {
+		case <-stop:
+			return
+		default:
+			//do continue
+		}
 	}
 }
 
-func driverWorkArtist(client spotify.Client, data chan<- []string) {
+func driverWorkArtist(client spotify.Client, data chan<- []string, stop chan int) {
 	var artists ArtistArray
 	for {
 
@@ -289,10 +249,18 @@ func driverWorkArtist(client spotify.Client, data chan<- []string) {
 		}
 		//time.Sleep(time.Hour * 24)
 		time.Sleep(time.Second * 30)
+
+		//Should we stop?
+		select {
+		case <-stop:
+			return
+		default:
+			//do continue
+		}
 	}
 }
 
-func driverWorkGenre(client spotify.Client, data <-chan []string) {
+func driverWorkGenre(client spotify.Client, data <-chan []string, stopChan chan int) {
 	var stop bool
 	genres := make([]Genres, 0)
 	for {
@@ -335,5 +303,43 @@ func driverWorkGenre(client spotify.Client, data <-chan []string) {
 		}
 		//time.Sleep(time.Hour * 24)
 		time.Sleep(time.Second * 30)
+
+		//Should we stop?
+		select {
+		case <-stopChan:
+			return
+		default:
+			//do continue
+		}
+	}
+}
+
+func setUpWebServer(testMode bool, r *mux.Router, port string) {
+
+	//Start up a well behaved HTTP/S server for displying the UI
+
+	srv := &http.Server{
+		Addr:         ":" + port,
+		ReadTimeout:  30 * time.Second,
+		WriteTimeout: 30 * time.Second,
+		IdleTimeout:  30 * time.Second,
+		Handler:      r,
+	}
+	if testMode {
+		//set up an http server for testing
+		libDatabox.Info("Waiting for http requests on port http://127.0.0.1" + srv.Addr)
+		log.Fatal(srv.ListenAndServe())
+	} else {
+		//configure tls
+		tlsConfig := &tls.Config{
+			PreferServerCipherSuites: true,
+			CurvePreferences: []tls.CurveID{
+				tls.CurveP256,
+			},
+		}
+		srv.TLSConfig = tlsConfig
+
+		libDatabox.Info("Waiting for https requests on port " + srv.Addr)
+		log.Fatal(srv.ListenAndServeTLS(libDatabox.GetHttpsCredentials(), libDatabox.GetHttpsCredentials()))
 	}
 }
