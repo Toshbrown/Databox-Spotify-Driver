@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"strings"
 
 	libDatabox "github.com/me-box/lib-go-databox"
 )
@@ -44,7 +43,7 @@ func info(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "<h1>Authenticated</h1>")
 	fmt.Fprintf(w, "<p>Driver logged in and getting data</p>")
 	fmt.Fprintf(w, `<div style="float:right"><a href="/spotify-history-driver/ui/logout">logout</a></div>`)
-	artistList, err := storeClient.KVText.ListKeys("SpotifyTopArtists")
+	artistKeys, err := storeClient.KVText.ListKeys("SpotifyTopArtists")
 	if err != nil {
 		libDatabox.Err("<p>Error could not read artists list " + err.Error() + "</p>")
 		return
@@ -52,7 +51,10 @@ func info(w http.ResponseWriter, r *http.Request) {
 
 	fmt.Fprintf(w, "<h2>Top artists</h2>")
 	fmt.Fprintf(w, "<pre>")
-	fmt.Fprintf(w, strings.Join(artistList, "\n"))
+	for _, key := range artistKeys {
+		artist, _ := storeClient.KVText.Read("SpotifyTopArtists", key)
+		fmt.Fprintf(w, string(artist)+"\n")
+	}
 	fmt.Fprintf(w, "</pre>")
 
 }
