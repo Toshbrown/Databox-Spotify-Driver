@@ -18,12 +18,14 @@ import (
 )
 
 const (
-	RedirectHostInsideDatabox      = "https://spotify-history-driver:8080"
-	RedirectHostOutsideDatabox     = "http://127.0.0.1:8080"
-	OAuthRedirectURIInsideDatabox  = "https://127.0.0.1/core-ui/ui/view/spotify-history-driver/callback"
-	OAuthRedirectURIOutsideDatabox = "https://127.0.0.1/ui/spotify-history-driver/callback"
-	testArbiterEndpoint            = "tcp://127.0.0.1:4444"
-	testStoreEndpoint              = "tcp://127.0.0.1:5555"
+	RedirectHostInsideDatabox                = "https://127.0.0.1"
+	RedirectHostOutsideDatabox               = "http://127.0.0.1:8080"
+	OAuthRedirectURIInsideDatabox            = "https://127.0.0.1/core-ui/ui/view/spotify-history-driver/callback"
+	OAuthRedirectURIOutsideDatabox           = "https://127.0.0.1/ui/spotify-history-driver/callback"
+	testArbiterEndpoint                      = "tcp://127.0.0.1:4444"
+	testStoreEndpoint                        = "tcp://127.0.0.1:5555"
+	DefaultPostAuthCallbackUrlInsideDatabox  = "/core-ui/ui/view/spotify-history-driver"
+	DefaultPostAuthCallbackUrlOutsideDatabox = "/ui/spotify-history-driver"
 )
 
 var (
@@ -66,11 +68,11 @@ func main() {
 		storeClient = libDatabox.NewCoreStoreClient(ac, "./", DataboxStoreEndpoint, false)
 		//turn on debug output for the databox library
 		libDatabox.OutputDebug(true)
-		PostAuthCallbackUrl = RedirectHostOutsideDatabox + "/ui/info"
+		PostAuthCallbackUrl = DefaultPostAuthCallbackUrlOutsideDatabox
 	} else {
 		DataboxStoreEndpoint = os.Getenv("DATABOX_ZMQ_ENDPOINT")
 		storeClient = libDatabox.NewDefaultCoreStoreClient(DataboxStoreEndpoint)
-		PostAuthCallbackUrl = RedirectHostInsideDatabox + "/ui/info"
+		PostAuthCallbackUrl = DefaultPostAuthCallbackUrlInsideDatabox
 	}
 	DefaultPostAuthCallbackUrl = PostAuthCallbackUrl
 

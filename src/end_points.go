@@ -70,7 +70,7 @@ func logOut(w http.ResponseWriter, r *http.Request) {
 		stopChan <- 1
 		stopChan <- 1
 	}()
-	http.Redirect(w, r, RedirectHostInsideDatabox+"/ui", 302)
+	http.Redirect(w, r, "/ui", 302)
 }
 
 func authHandle(w http.ResponseWriter, r *http.Request) {
@@ -90,7 +90,7 @@ func startAuth(w http.ResponseWriter, r *http.Request) {
 	libDatabox.ChkErr(err)
 	if len(accToken) > 0 {
 		//we are logged in 302 to the info page
-		http.Redirect(w, r, RedirectHostInsideDatabox+"/ui/info", 302)
+		http.Redirect(w, r, "/ui/info", 302)
 		return
 	}
 
@@ -101,7 +101,7 @@ func startAuth(w http.ResponseWriter, r *http.Request) {
 		url := auth.AuthURL(state)
 		fmt.Fprintf(w, "<a href='%s'>Press to authenticate</a>", url)
 	} else {
-		fmt.Fprintf(w, "<a href='./ui/auth'>Press to authenticate</a>")
+		fmt.Fprintf(w, "<a href='./ui/auth'>Press to authenticate</a><br/>")
 	}
 
 }
