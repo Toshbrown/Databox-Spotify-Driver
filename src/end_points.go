@@ -24,7 +24,10 @@ func completeAuth(w http.ResponseWriter, r *http.Request) {
 
 	libDatabox.Info("Referer:" + r.Referer())
 
-	http.Redirect(w, r, RedirectHostInsideDatabox+"/ui/info", 302)
+	fmt.Fprintf(w, "<html><head><script>window.parent.location = '%s';</script><head><body><body></html>", PostAuthCallbackUrl)
+
+	//reset the PostAuthCallbackUrl in case we need to auth again
+	PostAuthCallbackUrl = DefaultPostAuthCallbackUrl
 
 	client := auth.NewClient(tok)
 
@@ -71,9 +74,14 @@ func logOut(w http.ResponseWriter, r *http.Request) {
 }
 
 func authHandle(w http.ResponseWriter, r *http.Request) {
+
+	callbackUrl := r.FormValue("post_auth_callback")
+	if callbackUrl != "" {
+		PostAuthCallbackUrl = callbackUrl
+	}
 	url := auth.AuthURL(state)
 	libDatabox.Info("Auth handle")
-	fmt.Fprintf(w, "<script>window.parent.postMessage({ type:'databox_oauth_redirect', url: '%s'}, '*');</script>", url)
+	fmt.Fprintf(w, "<html><head><script>window.parent.postMessage({ type:'databox_oauth_redirect', url: '%s'}, '*');</script><head><body><body></html>", url)
 }
 
 func startAuth(w http.ResponseWriter, r *http.Request) {

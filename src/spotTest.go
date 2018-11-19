@@ -27,11 +27,13 @@ const (
 )
 
 var (
-	auth            spotify.Authenticator
-	state           = "abc123"
-	storeClient     *libDatabox.CoreStoreClient
-	DataboxTestMode = os.Getenv("DATABOX_VERSION") == ""
-	stopChan        chan int
+	auth                       spotify.Authenticator
+	state                      = "abc123"
+	storeClient                *libDatabox.CoreStoreClient
+	DataboxTestMode            = os.Getenv("DATABOX_VERSION") == ""
+	stopChan                   chan int
+	PostAuthCallbackUrl        string //where to redirect the user on successful Auth
+	DefaultPostAuthCallbackUrl string
 )
 
 //ArtistArray is an array of artists
@@ -64,10 +66,13 @@ func main() {
 		storeClient = libDatabox.NewCoreStoreClient(ac, "./", DataboxStoreEndpoint, false)
 		//turn on debug output for the databox library
 		libDatabox.OutputDebug(true)
+		PostAuthCallbackUrl = RedirectHostOutsideDatabox + "/ui/info"
 	} else {
 		DataboxStoreEndpoint = os.Getenv("DATABOX_ZMQ_ENDPOINT")
 		storeClient = libDatabox.NewDefaultCoreStoreClient(DataboxStoreEndpoint)
+		PostAuthCallbackUrl = RedirectHostInsideDatabox + "/ui/info"
 	}
+	DefaultPostAuthCallbackUrl = PostAuthCallbackUrl
 
 	registerDatasources()
 
