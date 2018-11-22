@@ -30,6 +30,19 @@
 	],
 	"resource-requirements": {
 		"store": "core-store"
-	}
-
+	},
+	"provides": [
+		{
+			"data-source-type": "spotify::playlistData",
+			"description": "Spotify Playlist Data",
+			"store-type": "kv",
+			"schema": {}
+		},
+		{
+			"data-source-type": "spotify::topArtists",
+			"description": "Spotify top artists Data",
+			"store-type": "kv",
+			"schema": {}
+		}
+	]
 }

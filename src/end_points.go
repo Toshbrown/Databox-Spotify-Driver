@@ -76,6 +76,9 @@ func logOut(w http.ResponseWriter, r *http.Request) {
 func authHandle(w http.ResponseWriter, r *http.Request) {
 
 	callbackUrl := r.FormValue("post_auth_callback")
+	if DataboxTestMode {
+		PostAuthCallbackUrl = "/ui/info"
+	}
 	if callbackUrl != "" {
 		PostAuthCallbackUrl = callbackUrl
 	}

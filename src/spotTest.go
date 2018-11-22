@@ -132,7 +132,7 @@ func registerDatasources() {
 		Description:    "Spotify Playlist Data",    //required
 		ContentType:    libDatabox.ContentTypeJSON, //required
 		Vendor:         "databox-test",             //required
-		DataSourceType: "playlistData",             //required
+		DataSourceType: "spotify::playlistData",    //required
 		DataSourceID:   "SpotifyTrackData",         //required
 		StoreType:      libDatabox.StoreTypeTSBlob, //required
 		IsActuator:     false,
@@ -149,7 +149,7 @@ func registerDatasources() {
 		Description:    "Spotify Top 20 user artists", //required
 		ContentType:    libDatabox.ContentTypeJSON,    //required
 		Vendor:         "databox-test",                //required
-		DataSourceType: "topArtists",                  //required
+		DataSourceType: "spotify::topArtists",         //required
 		DataSourceID:   "SpotifyTopArtists",           //required
 		StoreType:      libDatabox.StoreTypeKV,        //required
 		IsActuator:     false,

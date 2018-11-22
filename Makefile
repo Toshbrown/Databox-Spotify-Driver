@@ -7,7 +7,7 @@ all: build-amd64 build-arm64v8 publish-images
 
 .PHONY: start
 start:
-	go run ./src/spotTest.go
+	go run ./src/*.go
 
 .PHONY: build-amd64
 build-amd64:
