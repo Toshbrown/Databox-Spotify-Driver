@@ -46,7 +46,7 @@ func info(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "<h1>Authenticated</h1>")
 	fmt.Fprintf(w, "<p>Driver logged in and getting data</p>")
 	fmt.Fprintf(w, `<div style="float:right"><a href="/spotify-history-driver/ui/logout">logout</a></div>`)
-	artistKeys, err := storeClient.KVText.ListKeys("SpotifyTopArtists")
+	artistKeys, err := storeClient.KVJSON.ListKeys("SpotifyTopArtists")
 	if err != nil {
 		libDatabox.Err("<p>Error could not read artists list " + err.Error() + "</p>")
 		return
@@ -55,7 +55,7 @@ func info(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "<h2>Top artists</h2>")
 	fmt.Fprintf(w, "<pre>")
 	for _, key := range artistKeys {
-		artist, _ := storeClient.KVText.Read("SpotifyTopArtists", key)
+		artist, _ := storeClient.KVJSON.Read("SpotifyTopArtists", key)
 		fmt.Fprintf(w, string(artist)+"\n")
 	}
 	fmt.Fprintf(w, "</pre>")

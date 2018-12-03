@@ -246,7 +246,7 @@ func driverWorkArtist(client spotify.Client, data chan<- []string, stop chan int
 					return
 				}
 				key := "Pos" + strconv.Itoa(i)
-				err := storeClient.KVText.Write("SpotifyTopArtists", key, clean)
+				err := storeClient.KVJSON.Write("SpotifyTopArtists", key, clean)
 				if err != nil {
 					libDatabox.Err("Error Write Datasource " + err.Error())
 				}
@@ -303,7 +303,7 @@ func driverWorkGenre(client spotify.Client, data <-chan []string, stopChan chan 
 		//Store genre name in store based on popularity
 		for k := 0; k < len(genres); k++ {
 			key := "Pos" + strconv.Itoa(k)
-			err := storeClient.KVText.Write("SpotifyTopGenres", key, []byte(genres[k].Name))
+			err := storeClient.KVJSON.Write("SpotifyTopGenres", key, []byte(genres[k].Name))
 			if err != nil {
 				libDatabox.Err("Error Write Datasource " + err.Error())
 			}
