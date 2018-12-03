@@ -33,9 +33,11 @@ var (
 	state                      = "abc123"
 	storeClient                *libDatabox.CoreStoreClient
 	DataboxTestMode            = os.Getenv("DATABOX_VERSION") == ""
-	stopChan                   chan int
+	stopChan                   chan struct{}
+	updateChan                 chan int
 	PostAuthCallbackUrl        string //where to redirect the user on successful Auth
 	DefaultPostAuthCallbackUrl string
+	DoDriverWorkRunning        bool
 )
 
 //ArtistArray is an array of artists
@@ -96,11 +98,9 @@ func main() {
 			var tok *oauth2.Token
 			json.Unmarshal(accToken, &tok)
 			client := auth.NewClient(tok)
-			channel := make(chan []string)
-			stopChan = make(chan int)
-			go driverWorkTrack(client, stopChan)
-			go driverWorkArtist(client, channel, stopChan)
-			go driverWorkGenre(client, channel, stopChan)
+			stopChan = make(chan struct{})
+			updateChan = make(chan int)
+			go driverWorkTrack(client, stopChan, updateChan)
 		}()
 	}
 
@@ -164,7 +164,17 @@ func registerDatasources() {
 
 }
 
-func driverWorkTrack(client spotify.Client, stop chan int) {
+func driverWorkTrack(client spotify.Client, stop chan struct{}, forceUpdate chan int) {
+
+	if DoDriverWorkRunning {
+		//dont run two of these
+		return
+	}
+
+	channel := make(chan []string)
+	go driverWorkArtist(client, channel, stop, forceUpdate)
+	go driverWorkGenre(client, channel, stop)
+
 	var recentTime int64
 	var opts spotify.RecentlyPlayedOptions
 
@@ -172,6 +182,7 @@ func driverWorkTrack(client spotify.Client, stop chan int) {
 	opts.AfterEpochMs = recentTime
 
 	for {
+		DoDriverWorkRunning = true
 		results, err := client.PlayerRecentlyPlayedOpt(&opts)
 		if err != nil {
 			fmt.Println("Error ", err)
@@ -200,23 +211,25 @@ func driverWorkTrack(client spotify.Client, stop chan int) {
 		} else {
 			libDatabox.Info("No new data")
 		}
-		//time.Sleep(time.Hour * 2)
-		time.Sleep(time.Second * 30)
 
 		//Should we stop?
 		select {
 		case <-stop:
+			libDatabox.Info("Stopping data updates stop message received")
+			DoDriverWorkRunning = false
 			return
-		default:
-			//do continue
+		case <-forceUpdate:
+			libDatabox.Info("updating data forced")
+		case <-time.After(time.Minute * 30):
+			libDatabox.Info("updating data after time out")
 		}
 	}
 }
 
-func driverWorkArtist(client spotify.Client, data chan<- []string, stop chan int) {
+func driverWorkArtist(client spotify.Client, data chan<- []string, stop chan struct{}, forceUpdate chan int) {
 	var artists ArtistArray
 	for {
-
+		fmt.Println("getting CurrentUsersTopArtists")
 		results, err := client.CurrentUsersTopArtists()
 		if err != nil {
 			fmt.Println("Error ", err)
@@ -254,20 +267,20 @@ func driverWorkArtist(client spotify.Client, data chan<- []string, stop chan int
 			data <- []string{"end"}
 
 		}
-		//time.Sleep(time.Hour * 24)
-		time.Sleep(time.Second * 30)
 
 		//Should we stop?
 		select {
 		case <-stop:
 			return
-		default:
-			//do continue
+		case <-forceUpdate:
+			libDatabox.Info("updating data forced")
+		case <-time.After(time.Minute * 30):
+			libDatabox.Info("updating data after time out")
 		}
 	}
 }
 
-func driverWorkGenre(client spotify.Client, data <-chan []string, stopChan chan int) {
+func driverWorkGenre(client spotify.Client, data <-chan []string, stopChan chan struct{}) {
 	var stop bool
 	genres := make([]Genres, 0)
 	for {
@@ -303,7 +316,7 @@ func driverWorkGenre(client spotify.Client, data <-chan []string, stopChan chan 
 		//Store genre name in store based on popularity
 		for k := 0; k < len(genres); k++ {
 			key := "Pos" + strconv.Itoa(k)
-			err := storeClient.KVJSON.Write("SpotifyTopGenres", key, []byte(genres[k].Name))
+			err := storeClient.KVJSON.Write("SpotifyTopGenres", key, []byte(`{"genre":"`+genres[k].Name+`"}`))
 			if err != nil {
 				libDatabox.Err("Error Write Datasource " + err.Error())
 			}

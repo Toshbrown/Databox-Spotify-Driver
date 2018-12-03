@@ -31,11 +31,13 @@ func completeAuth(w http.ResponseWriter, r *http.Request) {
 
 	client := auth.NewClient(tok)
 
-	channel := make(chan []string)
-	stopChan = make(chan int)
-	go driverWorkTrack(client, stopChan)
-	go driverWorkArtist(client, channel, stopChan)
-	go driverWorkGenre(client, channel, stopChan)
+	if !DoDriverWorkRunning {
+		stopChan = make(chan struct{})
+		updateChan = make(chan int)
+		go driverWorkTrack(client, stopChan, updateChan)
+	} else {
+		updateChan <- 1
+	}
 
 	//save the AccessToken so we can use it if the driver is restarted
 	tocJson, _ := json.Marshal(tok)
@@ -66,9 +68,7 @@ func logOut(w http.ResponseWriter, r *http.Request) {
 	err := storeClient.KVText.Delete("auth", "AccessToken")
 	libDatabox.ChkErr(err)
 	go func() {
-		stopChan <- 1
-		stopChan <- 1
-		stopChan <- 1
+		close(stopChan)
 	}()
 	http.Redirect(w, r, "/ui", 302)
 }
