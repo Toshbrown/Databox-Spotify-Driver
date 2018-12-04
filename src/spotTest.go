@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/gorilla/mux"
 	libDatabox "github.com/me-box/lib-go-databox"
 	"github.com/zmb3/spotify"
@@ -18,10 +19,10 @@ import (
 )
 
 const (
-	RedirectHostInsideDatabox                = "https://127.0.0.1"
+	RedirectHostInsideDatabox                = ""
 	RedirectHostOutsideDatabox               = "http://127.0.0.1:8080"
-	OAuthRedirectURIInsideDatabox            = "https://127.0.0.1/core-ui/ui/view/spotify-history-driver/callback"
-	OAuthRedirectURIOutsideDatabox           = "https://127.0.0.1/ui/spotify-history-driver/callback"
+	OAuthRedirectURIInsideDatabox            = "/core-ui/ui/view/spotify-history-driver/callback"
+	OAuthRedirectURIOutsideDatabox           = "/ui/spotify-history-driver/callback"
 	testArbiterEndpoint                      = "tcp://127.0.0.1:4444"
 	testStoreEndpoint                        = "tcp://127.0.0.1:5555"
 	DefaultPostAuthCallbackUrlInsideDatabox  = "/core-ui/ui/view/spotify-history-driver"
@@ -29,8 +30,7 @@ const (
 )
 
 var (
-	auth                       spotify.Authenticator
-	state                      = "abc123"
+	state                      = ""
 	storeClient                *libDatabox.CoreStoreClient
 	DataboxTestMode            = os.Getenv("DATABOX_VERSION") == ""
 	stopChan                   chan struct{}
@@ -38,6 +38,7 @@ var (
 	PostAuthCallbackUrl        string //where to redirect the user on successful Auth
 	DefaultPostAuthCallbackUrl string
 	DoDriverWorkRunning        bool
+	RedirectURI                string //gets set to the correct redirect URI fro oauth
 )
 
 //ArtistArray is an array of artists
@@ -97,6 +98,8 @@ func main() {
 			time.Sleep(time.Second * 10) //give DB some time to set permissions
 			var tok *oauth2.Token
 			json.Unmarshal(accToken, &tok)
+
+			auth := newSpotifyAuthenticator()
 			client := auth.NewClient(tok)
 			stopChan = make(chan struct{})
 			updateChan = make(chan int)
@@ -105,18 +108,25 @@ func main() {
 	}
 
 	//Set client_id and client_secret for the application inside the auth object
-	redirectURI := OAuthRedirectURIInsideDatabox
+	RedirectURI = OAuthRedirectURIInsideDatabox
 	if DataboxTestMode {
-		redirectURI = OAuthRedirectURIOutsideDatabox
+		RedirectURI = OAuthRedirectURIOutsideDatabox
 	}
 
-	auth = spotify.NewAuthenticator(redirectURI,
+	//create a uuid each time we start the driver to use as the
+	//state in the oAuth request.
+	state = uuid.New().String()
+
+	setUpWebServer(DataboxTestMode, router, "8080")
+}
+
+func newSpotifyAuthenticator() *spotify.Authenticator {
+	auth := spotify.NewAuthenticator(RedirectURI,
 		spotify.ScopeUserReadPrivate,
 		spotify.ScopeUserReadRecentlyPlayed,
 		spotify.ScopeUserTopRead)
 	auth.SetAuthInfo("2706f5aa27b646d8835a6a8aca7eba37", "eb8aec62450e4d44a4308f07b82338cb")
-
-	setUpWebServer(DataboxTestMode, router, "8080")
+	return &auth
 }
 
 func statusEndpoint(w http.ResponseWriter, r *http.Request) {

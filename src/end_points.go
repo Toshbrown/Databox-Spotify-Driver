@@ -10,6 +10,8 @@ import (
 
 func completeAuth(w http.ResponseWriter, r *http.Request) {
 	libDatabox.Info("Callback handle")
+
+	auth := newSpotifyAuthenticator()
 	tok, err := auth.Token(state, r)
 	if err != nil {
 		http.Error(w, "Could not get token", http.StatusForbidden)
@@ -82,6 +84,12 @@ func authHandle(w http.ResponseWriter, r *http.Request) {
 	if callbackUrl != "" {
 		PostAuthCallbackUrl = callbackUrl
 	}
+
+	//add the extract the hostname for databox from the passed value
+	uri := r.FormValue("databox_uri")
+	RedirectURI = uri + RedirectURI
+
+	auth := newSpotifyAuthenticator()
 	url := auth.AuthURL(state)
 	libDatabox.Info("Auth handle")
 	fmt.Fprintf(w, "<html><head><script>window.parent.postMessage({ type:'databox_oauth_redirect', url: '%s'}, '*');</script><head><body><body></html>", url)
@@ -100,11 +108,6 @@ func startAuth(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "<h1>Authenticate</h1>")
 	fmt.Fprintf(w, "<title>Authentication Page</title>")
 
-	if DataboxTestMode {
-		url := auth.AuthURL(state)
-		fmt.Fprintf(w, "<a href='%s'>Press to authenticate</a>", url)
-	} else {
-		fmt.Fprintf(w, "<a href='./ui/auth'>Press to authenticate</a><br/>")
-	}
+	fmt.Fprintf(w, `<a href='#' onclick="window.location = './ui/auth?databox_uri=' + window.location.href.split('/').slice(0, 3).join('/')">Press to authenticate</a><br/>`)
 
 }
