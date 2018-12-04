@@ -52,6 +52,17 @@ type Artist struct {
 	Genre      []string `json:"genres"`
 	Popularity int      `json:"popularity"`
 	ID         string   `json:"id"`
+	Images     []Image  `json:"images"`
+}
+
+// Image identifies an image associated with an item.
+type Image struct {
+	// The image height, in pixels.
+	Height int `json:"height"`
+	// The image width, in pixels.
+	Width int `json:"width"`
+	// The source URL of the image.
+	URL string `json:"url"`
 }
 
 //Genres contains list of all genres and their occurrences
@@ -144,7 +155,7 @@ func registerDatasources() {
 		Vendor:         "databox-test",             //required
 		DataSourceType: "spotify::playlistData",    //required
 		DataSourceID:   "SpotifyTrackData",         //required
-		StoreType:      libDatabox.StoreTypeTSBlob, //required
+		StoreType:      libDatabox.StoreTypeKV,     //required
 		IsActuator:     false,
 		IsFunc:         false,
 	}
@@ -199,8 +210,19 @@ func driverWorkTrack(client spotify.Client, stop chan struct{}, forceUpdate chan
 			return
 		}
 		if len(results) > 0 {
+			b, err := json.Marshal(results)
+			if err != nil {
+				fmt.Println("Error ", err)
+				return
+			}
+			aerr := storeClient.KVJSON.Write("SpotifyTrackData", "tracks", b)
+			if aerr != nil {
+				libDatabox.Err("Error Write Datasource " + aerr.Error())
+				return
+			}
+
 			//Get most recent items time and convert to milliseconds
-			recentTime = results[0].PlayedAt.Unix() * 1000
+			/*recentTime = results[0].PlayedAt.Unix() * 1000
 			opts.AfterEpochMs = recentTime + 500
 
 			libDatabox.Info("Converting data tracks")
@@ -216,7 +238,7 @@ func driverWorkTrack(client spotify.Client, stop chan struct{}, forceUpdate chan
 				if aerr != nil {
 					libDatabox.Err("Error Write Datasource " + aerr.Error())
 				}
-			}
+			}*/
 			libDatabox.Info("Storing data")
 		} else {
 			libDatabox.Info("No new data")
