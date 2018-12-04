@@ -99,7 +99,7 @@ func main() {
 			var tok *oauth2.Token
 			json.Unmarshal(accToken, &tok)
 
-			auth := newSpotifyAuthenticator()
+			auth := newSpotifyAuthenticator("htts://127.0.0.1")
 			client := auth.NewClient(tok)
 			stopChan = make(chan struct{})
 			updateChan = make(chan int)
@@ -120,8 +120,8 @@ func main() {
 	setUpWebServer(DataboxTestMode, router, "8080")
 }
 
-func newSpotifyAuthenticator() *spotify.Authenticator {
-	auth := spotify.NewAuthenticator(RedirectURI,
+func newSpotifyAuthenticator(oAuthRedirectURI string) *spotify.Authenticator {
+	auth := spotify.NewAuthenticator(oAuthRedirectURI,
 		spotify.ScopeUserReadPrivate,
 		spotify.ScopeUserReadRecentlyPlayed,
 		spotify.ScopeUserTopRead)

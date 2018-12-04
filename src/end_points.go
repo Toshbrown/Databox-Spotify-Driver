@@ -8,10 +8,12 @@ import (
 	libDatabox "github.com/me-box/lib-go-databox"
 )
 
+var lastUsedRedirectURI = ""
+
 func completeAuth(w http.ResponseWriter, r *http.Request) {
 	libDatabox.Info("Callback handle")
 
-	auth := newSpotifyAuthenticator()
+	auth := newSpotifyAuthenticator(lastUsedRedirectURI)
 	tok, err := auth.Token(state, r)
 	if err != nil {
 		http.Error(w, "Could not get token", http.StatusForbidden)
@@ -87,9 +89,9 @@ func authHandle(w http.ResponseWriter, r *http.Request) {
 
 	//add the extract the hostname for databox from the passed value
 	uri := r.FormValue("databox_uri")
-	RedirectURI = uri + RedirectURI
+	lastUsedRedirectURI = uri + RedirectURI
 
-	auth := newSpotifyAuthenticator()
+	auth := newSpotifyAuthenticator(lastUsedRedirectURI)
 	url := auth.AuthURL(state)
 	libDatabox.Info("Auth handle")
 	fmt.Fprintf(w, "<html><head><script>window.parent.postMessage({ type:'databox_oauth_redirect', url: '%s'}, '*');</script><head><body><body></html>", url)
