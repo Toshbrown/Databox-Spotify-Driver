@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	libDatabox "github.com/me-box/lib-go-databox"
+	"github.com/zmb3/spotify"
 )
 
 var lastUsedRedirectURI = ""
@@ -38,7 +39,7 @@ func completeAuth(w http.ResponseWriter, r *http.Request) {
 	if !DoDriverWorkRunning {
 		stopChan = make(chan struct{})
 		updateChan = make(chan int)
-		go driverWorkTrack(client, stopChan, updateChan)
+		go driverWork(client, stopChan, updateChan)
 	} else {
 		updateChan <- 1
 	}
@@ -57,20 +58,62 @@ func info(w http.ResponseWriter, r *http.Request) {
 		libDatabox.Err("<p>Error could not read artists list " + err.Error() + "</p>")
 		return
 	}
+	genreKeys, err := storeClient.KVJSON.ListKeys("SpotifyTopGenres")
+	if err != nil {
+		libDatabox.Err("<p>Error could not read artists list " + err.Error() + "</p>")
+		return
+	}
 
-	fmt.Fprintf(w, "<h2>Top artists</h2>")
-	fmt.Fprintf(w, "<pre>")
+	fmt.Fprint(w, "<h2 style='clear:both'>Top artists</h2>")
+	fmt.Fprint(w, "<pre>")
 	for _, key := range artistKeys {
 		artist, _ := storeClient.KVJSON.Read("SpotifyTopArtists", key)
-		fmt.Fprintf(w, string(artist)+"\n")
+		fmt.Fprint(w, string(artist)+"\n")
 	}
-	fmt.Fprintf(w, "</pre>")
+	fmt.Fprint(w, "</pre>")
+
+	fmt.Fprint(w, "<h2 style='clear:both'>Top Genres</h2>")
+	fmt.Fprint(w, "<pre style='clear:both'>")
+	for _, key := range genreKeys {
+		genre, _ := storeClient.KVJSON.Read("SpotifyTopGenres", key)
+		fmt.Fprint(w, string(genre)+"\n")
+	}
+	fmt.Fprint(w, "</pre>")
+
+	fmt.Fprint(w, "<h2 style='clear:both'>Top Tracks</h2>")
+	fmt.Fprint(w, `<div style="width:100%">`)
+	trackData, _ := storeClient.KVJSON.Read("SpotifyTrackData", "tracks")
+	var tracks []spotify.FullTrack
+	json.Unmarshal(trackData, &tracks)
+	for _, t := range tracks {
+		fmt.Fprint(w, `<img style="display:block;width:20%;margin:1%;float:left" src="`+t.Album.Images[0].URL+`"/>`)
+	}
+	fmt.Fprint(w, "</div>")
+
+	fmt.Fprint(w, "<pre style='clear:both'>")
+	fmt.Fprint(w, string(trackData)+"\n")
+	fmt.Fprint(w, "</pre>")
 
 }
 
 func logOut(w http.ResponseWriter, r *http.Request) {
 	err := storeClient.KVText.Delete("auth", "AccessToken")
 	libDatabox.ChkErr(err)
+	artistKeys, err := storeClient.KVJSON.ListKeys("SpotifyTopArtists")
+	libDatabox.ChkErr(err)
+	for _, key := range artistKeys {
+		storeClient.KVJSON.Delete("SpotifyTopArtists", key)
+		libDatabox.ChkErr(err)
+	}
+	genreKeys, err := storeClient.KVJSON.ListKeys("SpotifyTopGenres")
+	libDatabox.ChkErr(err)
+	for _, key := range genreKeys {
+		storeClient.KVJSON.Delete("SpotifyTopGenres", key)
+		libDatabox.ChkErr(err)
+	}
+	aerr := storeClient.KVJSON.Delete("SpotifyTrackData", "tracks")
+	libDatabox.ChkErr(aerr)
+
 	go func() {
 		close(stopChan)
 	}()
@@ -85,6 +128,19 @@ func authHandle(w http.ResponseWriter, r *http.Request) {
 	}
 	if callbackUrl != "" {
 		PostAuthCallbackUrl = callbackUrl
+	}
+
+	accToken, err := storeClient.KVText.Read("auth", "AccessToken")
+	libDatabox.ChkErr(err)
+	if len(accToken) > 0 {
+		//we are logged in
+		if callbackUrl != "" {
+			fmt.Fprintf(w, "<html><head><script>window.parent.location = '%s';</script><head><body><body></html>", PostAuthCallbackUrl)
+			updateChan <- 1
+		} else {
+			http.Redirect(w, r, "/ui/info", 302)
+		}
+		return
 	}
 
 	//add the extract the hostname for databox from the passed value

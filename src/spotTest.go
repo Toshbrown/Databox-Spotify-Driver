@@ -110,11 +110,11 @@ func main() {
 			var tok *oauth2.Token
 			json.Unmarshal(accToken, &tok)
 
-			auth := newSpotifyAuthenticator("htts://127.0.0.1")
+			auth := newSpotifyAuthenticator("https://127.0.0.1")
 			client := auth.NewClient(tok)
 			stopChan = make(chan struct{})
 			updateChan = make(chan int)
-			go driverWorkTrack(client, stopChan, updateChan)
+			go driverWork(client, stopChan, updateChan)
 		}()
 	}
 
@@ -185,66 +185,17 @@ func registerDatasources() {
 
 }
 
-func driverWorkTrack(client spotify.Client, stop chan struct{}, forceUpdate chan int) {
-
+func driverWork(client spotify.Client, stop chan struct{}, forceUpdate chan int) {
 	if DoDriverWorkRunning {
 		//dont run two of these
 		return
 	}
 
-	channel := make(chan []string)
-	go driverWorkArtist(client, channel, stop, forceUpdate)
-	go driverWorkGenre(client, channel, stop)
-
-	var recentTime int64
-	var opts spotify.RecentlyPlayedOptions
-
-	opts.Limit = 50
-	opts.AfterEpochMs = recentTime
-
 	for {
 		DoDriverWorkRunning = true
-		results, err := client.PlayerRecentlyPlayedOpt(&opts)
-		if err != nil {
-			fmt.Println("Error ", err)
-			return
-		}
-		if len(results) > 0 {
-			b, err := json.Marshal(results)
-			if err != nil {
-				fmt.Println("Error ", err)
-				return
-			}
-			aerr := storeClient.KVJSON.Write("SpotifyTrackData", "tracks", b)
-			if aerr != nil {
-				libDatabox.Err("Error Write Datasource " + aerr.Error())
-				return
-			}
+		go driverWorkTrack(client)
+		go driverWorkArtist(client)
 
-			//Get most recent items time and convert to milliseconds
-			/*recentTime = results[0].PlayedAt.Unix() * 1000
-			opts.AfterEpochMs = recentTime + 500
-
-			libDatabox.Info("Converting data tracks")
-			for i := len(results) - 1; i > -1; i-- {
-				b, err := json.Marshal(results[i])
-				if err != nil {
-					fmt.Println("Error ", err)
-					return
-				}
-				aerr := storeClient.TSBlobJSON.WriteAt("SpotifyTrackData",
-					results[i].PlayedAt.Unix()*1000,
-					b)
-				if aerr != nil {
-					libDatabox.Err("Error Write Datasource " + aerr.Error())
-				}
-			}*/
-			libDatabox.Info("Storing data")
-		} else {
-			libDatabox.Info("No new data")
-		}
-
-		//Should we stop?
 		select {
 		case <-stop:
 			libDatabox.Info("Stopping data updates stop message received")
@@ -255,115 +206,129 @@ func driverWorkTrack(client spotify.Client, stop chan struct{}, forceUpdate chan
 		case <-time.After(time.Minute * 30):
 			libDatabox.Info("updating data after time out")
 		}
+
 	}
+
 }
 
-func driverWorkArtist(client spotify.Client, data chan<- []string, stop chan struct{}, forceUpdate chan int) {
-	var artists ArtistArray
-	for {
-		fmt.Println("getting CurrentUsersTopArtists")
-		results, err := client.CurrentUsersTopArtists()
+func driverWorkTrack(client spotify.Client) {
+
+	var opts spotify.Options
+
+	results, err := client.CurrentUsersTopTracksOpt(&opts)
+	if err != nil {
+		fmt.Println("Error ", err)
+		return
+	}
+	fmt.Println("PlayerRecentlyPlayed", results)
+	if len(results.Tracks) > 0 {
+
+		b, err := json.Marshal(results.Tracks)
 		if err != nil {
 			fmt.Println("Error ", err)
 			return
 		}
-		if results != nil {
-			libDatabox.Info("Converting data artists")
-
-			b, bErr := json.Marshal(results)
-			if bErr != nil {
-				fmt.Println("Error ", bErr)
-				return
-			}
-
-			mErr := json.Unmarshal(b, &artists)
-			if mErr != nil {
-				fmt.Println("Error ", mErr)
-				return
-			}
-
-			for i := 0; i < len(artists.Items); i++ {
-				data <- artists.Items[i].Genre
-
-				clean, cErr := json.Marshal(artists.Items[i])
-				if cErr != nil {
-					fmt.Println("Error ", cErr)
-					return
-				}
-				key := "Pos" + strconv.Itoa(i)
-				err := storeClient.KVJSON.Write("SpotifyTopArtists", key, clean)
-				if err != nil {
-					libDatabox.Err("Error Write Datasource " + err.Error())
-				}
-			}
-			data <- []string{"end"}
-
-		}
-
-		//Should we stop?
-		select {
-		case <-stop:
+		aerr := storeClient.KVJSON.Write("SpotifyTrackData", "tracks", b)
+		if aerr != nil {
+			libDatabox.Err("Error Write Datasource " + aerr.Error())
 			return
-		case <-forceUpdate:
-			libDatabox.Info("updating data forced")
-		case <-time.After(time.Minute * 30):
-			libDatabox.Info("updating data after time out")
 		}
+
+		//Get most recent items time and convert to milliseconds
+		/*recentTime = results[0].PlayedAt.Unix() * 1000
+		opts.AfterEpochMs = recentTime + 500
+
+		libDatabox.Info("Converting data tracks")
+		for i := len(results) - 1; i > -1; i-- {
+			b, err := json.Marshal(results[i])
+			if err != nil {
+				fmt.Println("Error ", err)
+				return
+			}
+			aerr := storeClient.TSBlobJSON.WriteAt("SpotifyTrackData",
+				results[i].PlayedAt.Unix()*1000,
+				b)
+			if aerr != nil {
+				libDatabox.Err("Error Write Datasource " + aerr.Error())
+			}
+		}*/
+		libDatabox.Info("Storing data")
+	} else {
+		libDatabox.Info("No new data")
 	}
+
 }
 
-func driverWorkGenre(client spotify.Client, data <-chan []string, stopChan chan struct{}) {
-	var stop bool
-	genres := make([]Genres, 0)
-	for {
-		for {
-			info := <-data
-			if info[0] == "end" {
-				break
-			}
+func driverWorkArtist(client spotify.Client) {
+	var artists ArtistArray
+	fmt.Println("getting CurrentUsersTopArtists")
+	results, err := client.CurrentUsersTopArtists()
+	if err != nil {
+		fmt.Println("Error ", err)
+		return
+	}
+	fmt.Println("CurrentUsersTopArtists", results)
+	if results != nil {
+		libDatabox.Info("Converting data artists")
 
-			for i := 0; i < len(info); i++ {
-				stop = false
-				for j := 0; j < len(genres); j++ {
-
-					if info[i] == genres[j].Name {
-						genres[j].Count++
-						stop = true
-					}
-				}
-				if !stop {
-					var temp Genres
-					temp.Name = info[i]
-					temp.Count++
-
-					genres = append(genres, temp)
-				}
-			}
-
+		b, bErr := json.Marshal(results)
+		if bErr != nil {
+			fmt.Println("Error ", bErr)
+			return
 		}
-		//Sort genres from most popular to least, based on count
-		sort.Slice(genres, func(i, j int) bool {
-			return genres[i].Count > genres[j].Count
-		})
-		//Store genre name in store based on popularity
-		for k := 0; k < len(genres); k++ {
-			key := "Pos" + strconv.Itoa(k)
-			err := storeClient.KVJSON.Write("SpotifyTopGenres", key, []byte(`{"genre":"`+genres[k].Name+`"}`))
+
+		mErr := json.Unmarshal(b, &artists)
+		if mErr != nil {
+			fmt.Println("Error ", mErr)
+			return
+		}
+
+		for i := 0; i < len(artists.Items); i++ {
+			go driverWorkGenre(client, artists.Items[i].Genre)
+			clean, cErr := json.Marshal(artists.Items[i])
+			if cErr != nil {
+				fmt.Println("Error ", cErr)
+				return
+			}
+			key := "Pos" + strconv.Itoa(i)
+			fmt.Println("TOP Artist writing", key, string(clean))
+			err := storeClient.KVJSON.Write("SpotifyTopArtists", key, clean)
 			if err != nil {
 				libDatabox.Err("Error Write Datasource " + err.Error())
 			}
 		}
-		//time.Sleep(time.Hour * 24)
-		time.Sleep(time.Second * 30)
+	}
+}
 
-		//Should we stop?
-		select {
-		case <-stopChan:
-			return
-		default:
-			//do continue
+func driverWorkGenre(client spotify.Client, info []string) {
+	genres := make([]Genres, 0)
+
+	for i := 0; i < len(info); i++ {
+		for j := 0; j < len(genres); j++ {
+			if info[i] == genres[j].Name {
+				genres[j].Count++
+			}
+		}
+		var temp Genres
+		temp.Name = info[i]
+		temp.Count++
+		genres = append(genres, temp)
+	}
+
+	//Sort genres from most popular to least, based on count
+	sort.Slice(genres, func(i, j int) bool {
+		return genres[i].Count > genres[j].Count
+	})
+
+	//Store genre name in store based on popularity
+	for k := 0; k < len(genres); k++ {
+		key := "Pos" + strconv.Itoa(k)
+		err := storeClient.KVJSON.Write("SpotifyTopGenres", key, []byte(`{"genre":"`+genres[k].Name+`"}`))
+		if err != nil {
+			libDatabox.Err("Error Write Datasource " + err.Error())
 		}
 	}
+
 }
 
 func setUpWebServer(testMode bool, r *mux.Router, port string) {
