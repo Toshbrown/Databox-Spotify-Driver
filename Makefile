@@ -1,4 +1,4 @@
-IMAGE_NAME=spotify-history-driver
+IMAGE_NAME=driver-spotify
 DEFAULT_REG=databoxsystems
 VERSION=latest
 
